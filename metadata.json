@@ -1,0 +1,6 @@
+{
+  "name": "棉絮手作室｜手作娃衣展示與客製工坊",
+  "description": "簡約精緻的手作娃衣展示與客製選配平台，提供特色娃衣、布料色卡客製、即時價格試算與商品管理後台。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
