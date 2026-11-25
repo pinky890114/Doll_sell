@@ -3,12 +3,13 @@ import { RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   DOLL_SIZES,
   STATUS_LABELS,
+  type CatalogCategoryFilter,
   type CatalogFilters,
-  type CategoryId,
   type DollSize,
   type PriceRangeKey,
   type Product,
   type ProductStatus,
+  type SectionVisibilityConfig,
   type SortOption,
 } from '../types/store';
 import { filterAndSortProducts } from '../utils/pricing';
@@ -18,6 +19,8 @@ interface CatalogViewProps {
   products: Product[];
   favorites: string[];
   filters: CatalogFilters;
+  sectionVisibility: SectionVisibilityConfig;
+  brandName: string;
   onFiltersChange: (next: CatalogFilters) => void;
   onToggleFavorite: (productId: string) => void;
   onSelectProduct: (productId: string) => void;
@@ -42,6 +45,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   products,
   favorites,
   filters,
+  sectionVisibility,
+  brandName,
   onFiltersChange,
   onToggleFavorite,
   onSelectProduct,
@@ -49,8 +54,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   const filteredProducts = useMemo(
-    () => filterAndSortProducts(products, filters),
-    [products, filters]
+    () => filterAndSortProducts(products, filters, sectionVisibility),
+    [products, filters, sectionVisibility]
   );
 
   const activeFilterCount =
@@ -58,7 +63,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     (filters.status !== 'all' ? 1 : 0) +
     (filters.priceRange !== 'all' ? 1 : 0);
 
-  const setCategory = (category: CategoryId | 'all') =>
+  const setCategory = (category: CatalogCategoryFilter) =>
     onFiltersChange({ ...filters, category });
 
   const resetFilters = () =>
@@ -71,19 +76,57 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       sortBy: 'default',
     });
 
-  const headingTitle =
-    filters.category === 'featured'
-      ? '特色娃衣'
-      : filters.category === 'custom'
-      ? '客製化娃衣'
-      : '全部商品分類';
+  const visibleTabs: { id: CatalogCategoryFilter; label: string }[] = [
+    { id: 'all', label: '全部商品' },
+    ...(sectionVisibility.proxy
+      ? ([
+          { id: 'proxy', label: '娃衣代理區' },
+          { id: 'featured', label: '特色娃衣' },
+          { id: 'custom', label: '客製化娃衣' },
+        ] as const)
+      : []),
+    ...(sectionVisibility.crochet
+      ? ([
+          { id: 'crochet', label: '毛線編織' },
+          { id: 'crochet_bib', label: '娃用圍兜兜' },
+          { id: 'crochet_outfit', label: '鉤織娃衣' },
+        ] as const)
+      : []),
+  ];
 
-  const headingSubtitle =
-    filters.category === 'featured'
-      ? '工坊原創配色成衣款式，支援尺寸與局部細節選配'
-      : filters.category === 'custom'
-      ? '自由挑選布料色卡與手作細節，即時試算專屬價格'
-      : '瀏覽 YourTreasure娃衣代理 上架中的特色成衣與客製化款式（所有價格皆為預估報價）';
+  const headingMeta: Record<CatalogCategoryFilter, { title: string; subtitle: string }> = {
+    all: {
+      title: '全部商品分類',
+      subtitle: `瀏覽 ${brandName} 上架中的娃衣代理與毛線編織手作款式（所有價格皆為預估報價）`,
+    },
+    proxy: {
+      title: '娃衣代理區',
+      subtitle: '包含特色娃衣與客製化娃衣，自由挑選布料色卡、鑽盤、眼睛與緞帶',
+    },
+    featured: {
+      title: '特色娃衣',
+      subtitle: '娃衣代理區 · 工坊原創配色成衣款式，支援尺寸與局部細節選配',
+    },
+    custom: {
+      title: '客製化娃衣',
+      subtitle: '娃衣代理區 · 自由挑選布料色卡與手作細節，即時試算專屬價格',
+    },
+    crochet: {
+      title: '毛線編織',
+      subtitle: '手工鉤織娃用圍兜兜與鉤織娃衣，搭配線材庫自由挑選毛線色號',
+    },
+    crochet_bib: {
+      title: '娃用圍兜兜',
+      subtitle: '毛線編織 · 細針鉤織花邊圍兜兜，可自選線材庫色號與珍珠蝴蝶結點綴',
+    },
+    crochet_outfit: {
+      title: '鉤織娃衣',
+      subtitle: '毛線編織 · 暖系手工針織開襟毛衣、帽子與保暖套組，支援線材庫選色',
+    },
+  };
+
+  const { title: headingTitle, subtitle: headingSubtitle } =
+    headingMeta[filters.category] ?? headingMeta.all;
 
   const renderFilterControls = () => (
     <div className="space-y-5">
@@ -174,15 +217,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         <div
           role="tablist"
           aria-label="切換商品分類"
-          className="inline-flex rounded-xl bg-[#EFECE6] p-1 self-start"
+          className="flex flex-wrap gap-1 rounded-xl bg-[#EFECE6] p-1 self-start max-w-full"
         >
-          {(
-            [
-              { id: 'all', label: '全部商品' },
-              { id: 'featured', label: '特色娃衣' },
-              { id: 'custom', label: '客製化娃衣' },
-            ] as const
-          ).map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = filters.category === tab.id;
             return (
               <button
@@ -191,7 +228,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setCategory(tab.id)}
-                className={`min-h-[38px] rounded-lg px-3.5 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`min-h-[38px] rounded-lg px-3 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   active
                     ? 'bg-white text-[#2B2825]'
                     : 'text-[#6E6962] hover:text-[#2B2825]'

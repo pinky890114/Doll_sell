@@ -3,18 +3,39 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Grid2X2, Heart, Home, ShoppingBag } from 'lucide-react';
-import type {
-  AdminUser,
-  CartItem,
-  CatalogFilters,
-  CategoryId,
-  FabricSwatch,
-  HomeConfig,
-  Product,
+import { auth } from './firebase';
+import {
+  INITIAL_HOME_CONFIG,
+  INITIAL_PRODUCTS,
+  INITIAL_SWATCHES,
+} from './data/seedData';
+import {
+  getSectionForCategory,
+  type AdminUser,
+  type CartItem,
+  type CatalogCategoryFilter,
+  type CatalogFilters,
+  type FabricSwatch,
+  type HomeConfig,
+  type Product,
 } from './types/store';
-import { storeRepository } from './services/storage';
+import { localShopperStorage } from './services/storage';
+import {
+  checkIsVerifiedAdmin,
+  deleteProductFromCloud,
+  deleteSwatchFromCloud,
+  saveHomeConfigToCloud,
+  saveProductToCloud,
+  saveSwatchToCloud,
+  seedInitialStorefrontToCloud,
+  signOutAdmin,
+  subscribeHomeConfig,
+  subscribeProducts,
+  subscribeSwatches,
+} from './services/firestoreStore';
 import {
   buildRoutePath,
   parseRouteFromPath,
@@ -24,7 +45,7 @@ import { HomeView } from './components/HomeView';
 import { CatalogView } from './components/CatalogView';
 import { ProductDetailView } from './components/ProductDetailView';
 import { FavoritesView } from './components/FavoritesView';
-import { AdminView } from './components/AdminView';
+import { AdminView, type AuthGateState } from './components/AdminView';
 import { CartDrawer } from './components/CartDrawer';
 import { OfflineIndicator } from './components/PWAInstallButton';
 
@@ -79,24 +100,24 @@ function BrandSpoolMark() {
 }
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(() =>
-    storeRepository.loadProducts()
-  );
-  const [swatches, setSwatches] = useState<FabricSwatch[]>(() =>
-    storeRepository.loadSwatches()
-  );
-  const [homeConfig, setHomeConfig] = useState<HomeConfig>(() =>
-    storeRepository.loadHomeConfig()
-  );
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [swatches, setSwatches] = useState<FabricSwatch[]>(INITIAL_SWATCHES);
+  const [homeConfig, setHomeConfig] = useState<HomeConfig>(INITIAL_HOME_CONFIG);
   const [favorites, setFavorites] = useState<string[]>(() =>
-    storeRepository.loadFavorites()
+    localShopperStorage.loadFavorites()
   );
   const [cartItems, setCartItems] = useState<CartItem[]>(() =>
-    storeRepository.loadCart()
+    localShopperStorage.loadCart()
   );
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(() =>
-    storeRepository.loadAdminSession()
-  );
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [authGate, setAuthGate] = useState<AuthGateState>({
+    loading: true,
+    signedInEmail: null,
+    emailVerified: false,
+    isAdmin: false,
+  });
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const seededOnceRef = useRef(false);
 
   const initialParsed =
     typeof window !== 'undefined'
@@ -110,6 +131,101 @@ export default function App() {
     ...DEFAULT_FILTERS,
     category: initialParsed.page === 'catalog' ? initialParsed.category : 'all',
   }));
+
+  // Firebase Auth listener
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!active) return;
+      if (!firebaseUser) {
+        setAdminUser(null);
+        setAuthGate({
+          loading: false,
+          signedInEmail: null,
+          emailVerified: false,
+          isAdmin: false,
+        });
+        return;
+      }
+
+      try {
+        const isAdmin = await checkIsVerifiedAdmin(firebaseUser);
+        if (!active) return;
+        setAuthGate({
+          loading: false,
+          signedInEmail: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified,
+          isAdmin,
+        });
+        if (isAdmin) {
+          setAdminUser({
+            email: firebaseUser.email || '',
+            name: firebaseUser.displayName || '天冷穿件衣 管理員',
+            role: 'admin',
+            loggedInAt: new Date().toISOString(),
+          });
+          if (!seededOnceRef.current) {
+            seededOnceRef.current = true;
+            void seedInitialStorefrontToCloud(false).catch((err) => {
+              console.error('Initial cloud seed skipped:', err);
+            });
+          }
+        } else {
+          setAdminUser(null);
+        }
+      } catch (err) {
+        console.error('Admin verification failed:', err);
+        if (!active) return;
+        setAdminUser(null);
+        setAuthGate({
+          loading: false,
+          signedInEmail: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified,
+          isAdmin: false,
+        });
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Firestore real-time catalog & storefront settings listeners
+  useEffect(() => {
+    if (authGate.loading) return;
+
+    const unsubProducts = subscribeProducts(authGate.isAdmin, (cloudProducts, hasCloudDocs) => {
+      if (hasCloudDocs) {
+        setProducts(cloudProducts);
+      } else {
+        setProducts(INITIAL_PRODUCTS);
+      }
+    });
+
+    const unsubSwatches = subscribeSwatches(authGate.isAdmin, (cloudSwatches, hasCloudDocs) => {
+      if (hasCloudDocs) {
+        setSwatches(cloudSwatches);
+      } else {
+        setSwatches(INITIAL_SWATCHES);
+      }
+    });
+
+    const unsubConfig = subscribeHomeConfig((cloudConfig) => {
+      if (cloudConfig) {
+        setHomeConfig(cloudConfig);
+      } else {
+        setHomeConfig(INITIAL_HOME_CONFIG);
+      }
+    });
+
+    return () => {
+      unsubProducts();
+      unsubSwatches();
+      unsubConfig();
+    };
+  }, [authGate.loading, authGate.isAdmin]);
 
   const navigate = (nextRoute: AppRoute, replace = false) => {
     setRoute((current) => {
@@ -156,7 +272,7 @@ export default function App() {
       const next = exists
         ? prev.filter((id) => id !== productId)
         : [...prev, productId];
-      storeRepository.saveFavorites(next);
+      localShopperStorage.saveFavorites(next);
       return next;
     });
   };
@@ -164,7 +280,7 @@ export default function App() {
   const handleAddToCart = (item: CartItem) => {
     setCartItems((prev) => {
       const next = [item, ...prev];
-      storeRepository.saveCart(next);
+      localShopperStorage.saveCart(next);
       return next;
     });
   };
@@ -178,7 +294,7 @@ export default function App() {
             : item
         )
         .filter((item) => item.quantity > 0);
-      storeRepository.saveCart(next);
+      localShopperStorage.saveCart(next);
       return next;
     });
   };
@@ -186,49 +302,94 @@ export default function App() {
   const handleRemoveCartItem = (cartItemId: string) => {
     setCartItems((prev) => {
       const next = prev.filter((item) => item.cartItemId !== cartItemId);
-      storeRepository.saveCart(next);
+      localShopperStorage.saveCart(next);
       return next;
     });
   };
 
   const handleClearCart = () => {
     setCartItems([]);
-    storeRepository.saveCart([]);
+    localShopperStorage.saveCart([]);
   };
 
-  const handleSaveProducts = (next: Product[]) => {
+  const handleSaveProducts = async (next: Product[]) => {
+    const previous = products;
     setProducts(next);
-    storeRepository.saveProducts(next);
+    setCloudError(null);
+    try {
+      const prevMap = new Map(previous.map((p) => [p.id, p]));
+      const nextIds = new Set(next.map((p) => p.id));
+
+      const deletions = previous
+        .filter((p) => !nextIds.has(p.id))
+        .map((p) => deleteProductFromCloud(p.id));
+
+      const upserts = next
+        .filter((p) => {
+          const old = prevMap.get(p.id);
+          return !old || JSON.stringify(old) !== JSON.stringify(p);
+        })
+        .map((p) => saveProductToCloud(p));
+
+      await Promise.all([...deletions, ...upserts]);
+    } catch {
+      setCloudError('無法將商品變更同步至 Firebase 雲端資料庫，請確認管理員權限與圖片大小。');
+    }
   };
 
-  const handleSaveSwatches = (next: FabricSwatch[]) => {
+  const handleSaveSwatches = async (next: FabricSwatch[]) => {
+    const previous = swatches;
     setSwatches(next);
-    storeRepository.saveSwatches(next);
+    setCloudError(null);
+    try {
+      const prevMap = new Map(previous.map((s) => [s.id, s]));
+      const nextIds = new Set(next.map((s) => s.id));
+
+      const deletions = previous
+        .filter((s) => !nextIds.has(s.id))
+        .map((s) => deleteSwatchFromCloud(s.id));
+
+      const upserts = next
+        .filter((s) => {
+          const old = prevMap.get(s.id);
+          return !old || JSON.stringify(old) !== JSON.stringify(s);
+        })
+        .map((s) => saveSwatchToCloud(s));
+
+      await Promise.all([...deletions, ...upserts]);
+    } catch {
+      setCloudError('無法將色卡變更同步至 Firebase 雲端資料庫，請稍後再試。');
+    }
   };
 
-  const handleSaveHomeConfig = (next: HomeConfig) => {
+  const handleSaveHomeConfig = async (next: HomeConfig) => {
     setHomeConfig(next);
-    storeRepository.saveHomeConfig(next);
+    setCloudError(null);
+    try {
+      await saveHomeConfigToCloud(next);
+    } catch {
+      setCloudError('無法將首頁與 LINE 設定同步至 Firebase 雲端資料庫，請確認管理員權限。');
+    }
   };
 
-  const handleResetDemoData = () => {
-    const reset = storeRepository.resetDemoData();
-    setProducts(reset.products);
-    setSwatches(reset.swatches);
-    setHomeConfig(reset.homeConfig);
+  const handleResetDemoData = async () => {
+    setCloudError(null);
+    try {
+      await seedInitialStorefrontToCloud(true);
+      setProducts(INITIAL_PRODUCTS);
+      setSwatches(INITIAL_SWATCHES);
+      setHomeConfig(INITIAL_HOME_CONFIG);
+    } catch {
+      setCloudError('還原預設商品資料至雲端時發生錯誤，請確認管理員權限。');
+    }
   };
 
-  const handleAdminLogin = (user: AdminUser) => {
-    setAdminUser(user);
-    storeRepository.saveAdminSession(user);
-  };
-
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    await signOutAdmin();
     setAdminUser(null);
-    storeRepository.saveAdminSession(null);
   };
 
-  const navigateToCategory = (category: CategoryId | 'all', searchQuery?: string) => {
+  const navigateToCategory = (category: CatalogCategoryFilter, searchQuery?: string) => {
     setFilters((prev) => ({
       ...prev,
       category,
@@ -253,8 +414,16 @@ export default function App() {
       ? products.find((p) => p.id === route.productId) ?? null
       : null;
 
+  const sectionVisibility = homeConfig.sectionVisibility ?? {
+    proxy: true,
+    crochet: true,
+  };
+
   const publishedFavoritesCount = products.filter(
-    (p) => p.isPublished && favorites.includes(p.id)
+    (p) =>
+      p.isPublished &&
+      sectionVisibility[getSectionForCategory(p.categoryId)] &&
+      favorites.includes(p.id)
   ).length;
 
   const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -293,28 +462,38 @@ export default function App() {
             >
               首頁
             </button>
-            <button
-              type="button"
-              onClick={() => navigateToCategory('featured', '')}
-              className={`py-1 transition-colors whitespace-nowrap shrink-0 ${
-                route.page === 'catalog' && filters.category === 'featured'
-                  ? 'text-[#2B2825] border-b border-[#2B2825]'
-                  : 'hover:text-[#2B2825]'
-              }`}
-            >
-              特色娃衣
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToCategory('custom', '')}
-              className={`py-1 transition-colors whitespace-nowrap shrink-0 ${
-                route.page === 'catalog' && filters.category === 'custom'
-                  ? 'text-[#2B2825] border-b border-[#2B2825]'
-                  : 'hover:text-[#2B2825]'
-              }`}
-            >
-              客製化娃衣
-            </button>
+            {sectionVisibility.proxy && (
+              <button
+                type="button"
+                onClick={() => navigateToCategory('proxy', '')}
+                className={`py-1 transition-colors whitespace-nowrap shrink-0 ${
+                  route.page === 'catalog' &&
+                  (filters.category === 'proxy' ||
+                    filters.category === 'featured' ||
+                    filters.category === 'custom')
+                    ? 'text-[#2B2825] border-b border-[#2B2825]'
+                    : 'hover:text-[#2B2825]'
+                }`}
+              >
+                娃衣代理區
+              </button>
+            )}
+            {sectionVisibility.crochet && (
+              <button
+                type="button"
+                onClick={() => navigateToCategory('crochet', '')}
+                className={`py-1 transition-colors whitespace-nowrap shrink-0 ${
+                  route.page === 'catalog' &&
+                  (filters.category === 'crochet' ||
+                    filters.category === 'crochet_bib' ||
+                    filters.category === 'crochet_outfit')
+                    ? 'text-[#2B2825] border-b border-[#2B2825]'
+                    : 'hover:text-[#2B2825]'
+                }`}
+              >
+                毛線編織
+              </button>
+            )}
             <button
               type="button"
               onClick={() => navigate({ page: 'favorites' })}
@@ -381,6 +560,8 @@ export default function App() {
             products={products}
             favorites={favorites}
             filters={filters}
+            sectionVisibility={sectionVisibility}
+            brandName={homeConfig.brandName}
             onFiltersChange={handleFiltersChange}
             onToggleFavorite={handleToggleFavorite}
             onSelectProduct={openProductDetail}
@@ -425,6 +606,7 @@ export default function App() {
           <FavoritesView
             products={products}
             favorites={favorites}
+            sectionVisibility={sectionVisibility}
             onToggleFavorite={handleToggleFavorite}
             onSelectProduct={openProductDetail}
             onBrowseCatalog={(cat) => navigateToCategory(cat, '')}
@@ -434,10 +616,11 @@ export default function App() {
         {route.page === 'admin' && (
           <AdminView
             adminUser={adminUser}
+            authGate={authGate}
+            cloudError={cloudError}
             products={products}
             swatches={swatches}
             homeConfig={homeConfig}
-            onLogin={handleAdminLogin}
             onLogout={handleAdminLogout}
             onSaveProducts={handleSaveProducts}
             onSaveSwatches={handleSaveSwatches}

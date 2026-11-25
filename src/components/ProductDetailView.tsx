@@ -19,9 +19,12 @@ import {
 } from 'lucide-react';
 import {
   CATEGORY_LABELS,
+  getSectionForCategory,
+  SECTION_LABELS,
   STATUS_LABELS,
+  SWATCH_LIBRARY_META,
   type CartItem,
-  type CategoryId,
+  type CatalogCategoryFilter,
   type FabricSwatch,
   type LineIntegrationConfig,
   type Product,
@@ -55,7 +58,7 @@ interface ProductDetailViewProps {
   onAddToCart: (item: CartItem) => void;
   onOpenCart: () => void;
   onBack: () => void;
-  onNavigateCategory: (category: CategoryId) => void;
+  onNavigateCategory: (category: CatalogCategoryFilter) => void;
 }
 
 export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
@@ -273,6 +276,14 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           <span aria-hidden="true">/</span>
           <button
             type="button"
+            onClick={() => onNavigateCategory(getSectionForCategory(product.categoryId))}
+            className="hover:text-[#2B2825] whitespace-nowrap shrink-0"
+          >
+            {SECTION_LABELS[getSectionForCategory(product.categoryId)]}
+          </button>
+          <span aria-hidden="true">/</span>
+          <button
+            type="button"
             onClick={() => onNavigateCategory(product.categoryId)}
             className="hover:text-[#2B2825] whitespace-nowrap shrink-0"
           >
@@ -429,7 +440,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
               )}
             </div>
 
-            <p className="mt-3.5 text-sm leading-relaxed text-[#4C4742]">
+            <p className="mt-3.5 text-sm leading-relaxed text-[#4C4742] whitespace-pre-line">
               {product.summary}
             </p>
           </div>
@@ -454,7 +465,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
             </div>
             <div className="p-3">
               <p className="font-medium text-[#2B2825]">購買注意事項</p>
-              <p className="mt-1 leading-relaxed text-[#6E6962]">{product.materialAndCare}</p>
+              <p className="mt-1.5 leading-relaxed text-[#6E6962] whitespace-pre-line">{product.materialAndCare}</p>
             </div>
             <div className="p-3 flex items-center justify-between gap-2 bg-[#F7F5F0]/55">
               <span className="text-[#6E6962]">對尺寸、布料或交期有疑問？</span>
@@ -648,7 +659,11 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                               <div className="relative aspect-square w-full bg-[#EFECE6]">
                                 <SafeImage
                                   src={swatchImage}
-                                  alt={`${displayName} 布料色卡`}
+                                  alt={`${displayName} ${
+                                    swatch
+                                      ? SWATCH_LIBRARY_META[swatch.libraryType || 'fabric'].itemLabel
+                                      : '色卡'
+                                  }`}
                                   fallbackTitle={displayName}
                                   className="h-full w-full object-cover"
                                 />
@@ -682,7 +697,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                                 onClick={() =>
                                   setZoomedSwatch({ swatch, groupId: group.id, option })
                                 }
-                                aria-label={`放大查看 ${displayName} 色卡`}
+                                aria-label={`放大查看 ${displayName}`}
                                 className="absolute top-1.5 right-1.5 flex h-8 w-8 items-center justify-center rounded-lg bg-[#F7F5F0]/90 text-[#2B2825] backdrop-blur-xs hover:bg-white transition-colors"
                               >
                                 <ZoomIn className="h-3.5 w-3.5" />
@@ -970,91 +985,95 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
         </div>
       )}
 
-      {/* Fabric Swatch Zoom Modal */}
-      {zoomedSwatch && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#2B2825]/55 p-0 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="swatch-modal-title"
-          onClick={() => setZoomedSwatch(null)}
-        >
+      {/* Shared Library Swatch Zoom Modal */}
+      {zoomedSwatch && (() => {
+        const libMeta =
+          SWATCH_LIBRARY_META[zoomedSwatch.swatch.libraryType || 'fabric'];
+        return (
           <div
-            className="w-full sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-2xl bg-[#F7F5F0] border border-[#E5E0D8]"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#2B2825]/55 p-0 sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="swatch-modal-title"
+            onClick={() => setZoomedSwatch(null)}
           >
-            <div className="relative aspect-square w-full bg-[#EFECE6]">
-              <SafeImage
-                src={zoomedSwatch.swatch.imageUrl}
-                alt={`${zoomedSwatch.swatch.name} 材質近拍`}
-                className="h-full w-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setZoomedSwatch(null)}
-                aria-label="關閉色卡放大檢視"
-                className="absolute top-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F5F0]/90 text-[#2B2825]"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-mono text-xs text-[#6E6962]">
-                    色號 {zoomedSwatch.swatch.code} · {zoomedSwatch.swatch.hex}
-                  </p>
-                  <h3
-                    id="swatch-modal-title"
-                    className="font-display text-lg font-semibold text-[#2B2825]"
-                  >
-                    {zoomedSwatch.swatch.name}
-                  </h3>
-                </div>
-                <span
-                  className="h-9 w-9 shrink-0 rounded-lg border border-black/10"
-                  style={{ backgroundColor: zoomedSwatch.swatch.hex }}
+            <div
+              className="w-full sm:max-w-md overflow-hidden rounded-t-3xl sm:rounded-2xl bg-[#F7F5F0] border border-[#E5E0D8]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative aspect-square w-full bg-[#EFECE6]">
+                <SafeImage
+                  src={zoomedSwatch.swatch.imageUrl}
+                  alt={`${zoomedSwatch.swatch.name} 實拍近覽`}
+                  className="h-full w-full object-cover"
                 />
-              </div>
-
-              <p className="text-sm leading-relaxed text-[#4C4742]">
-                {zoomedSwatch.swatch.materialNote}
-              </p>
-
-              <div className="flex items-center gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setZoomedSwatch(null)}
-                  className="flex-1 min-h-[44px] rounded-xl border border-[#DCD5CA] bg-white text-sm font-medium text-[#2B2825]"
+                  aria-label="關閉放大檢視"
+                  className="absolute top-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F5F0]/90 text-[#2B2825]"
                 >
-                  關閉
+                  <X className="h-5 w-5" />
                 </button>
-                {zoomedSwatch.option.available && (
+              </div>
+
+              <div className="p-5 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-xs text-[#6E6962]">
+                      {libMeta.label} · 編號 {zoomedSwatch.swatch.code} · {zoomedSwatch.swatch.hex}
+                    </p>
+                    <h3
+                      id="swatch-modal-title"
+                      className="font-display text-lg font-semibold text-[#2B2825]"
+                    >
+                      {zoomedSwatch.swatch.name}
+                    </h3>
+                  </div>
+                  <span
+                    className="h-9 w-9 shrink-0 rounded-lg border border-black/10"
+                    style={{ backgroundColor: zoomedSwatch.swatch.hex }}
+                  />
+                </div>
+
+                <p className="text-sm leading-relaxed text-[#4C4742]">
+                  {zoomedSwatch.swatch.materialNote}
+                </p>
+
+                <div className="flex items-center gap-2.5 pt-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      const targetGroup = product.variantGroups.find(
-                        (g) => g.id === zoomedSwatch.groupId
-                      );
-                      if (targetGroup) {
-                        handleSelectOption(targetGroup, zoomedSwatch.option);
-                      }
-                      setZoomedSwatch(null);
-                    }}
-                    className="flex-[2] min-h-[44px] rounded-xl bg-[#2B2825] text-sm font-medium text-white"
+                    onClick={() => setZoomedSwatch(null)}
+                    className="flex-1 min-h-[44px] rounded-xl border border-[#DCD5CA] bg-white text-sm font-medium text-[#2B2825]"
                   >
-                    套用此布料色卡
-                    {zoomedSwatch.option.priceDelta > 0
-                      ? ` (+${formatTWD(zoomedSwatch.option.priceDelta)})`
-                      : ''}
+                    關閉
                   </button>
-                )}
+                  {zoomedSwatch.option.available && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetGroup = product.variantGroups.find(
+                          (g) => g.id === zoomedSwatch.groupId
+                        );
+                        if (targetGroup) {
+                          handleSelectOption(targetGroup, zoomedSwatch.option);
+                        }
+                        setZoomedSwatch(null);
+                      }}
+                      className="flex-[2] min-h-[44px] rounded-xl bg-[#2B2825] text-sm font-medium text-white"
+                    >
+                      套用此{libMeta.itemLabel}
+                      {zoomedSwatch.option.priceDelta > 0
+                        ? ` (+${formatTWD(zoomedSwatch.option.priceDelta)})`
+                        : ''}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

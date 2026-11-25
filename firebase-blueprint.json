@@ -1,0 +1,292 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Handmade doll clothing product item displayed in the storefront catalog.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "categoryId": {
+          "type": "string",
+          "enum": ["featured", "custom", "crochet_bib", "crochet_outfit"]
+        },
+        "basePrice": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "in_stock", "made_to_order", "sold_out"]
+        },
+        "dollSizes": {
+          "type": "array"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "materialAndCare": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "leadTime": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "images": {
+          "type": "array"
+        },
+        "variantGroups": {
+          "type": "array"
+        },
+        "isPublished": {
+          "type": "boolean"
+        },
+        "isRecommended": {
+          "type": "boolean"
+        },
+        "isNewArrival": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "type": "number"
+        },
+        "allowCustomNote": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "categoryId",
+        "basePrice",
+        "status",
+        "dollSizes",
+        "summary",
+        "materialAndCare",
+        "leadTime",
+        "images",
+        "variantGroups",
+        "isPublished",
+        "isRecommended",
+        "isNewArrival",
+        "sortOrder",
+        "allowCustomNote",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FabricSwatch": {
+      "title": "FabricSwatch",
+      "description": "Shared material and color library entry (fabric swatch, rhinestone tray, eye color, ribbon color) used in custom doll clothing options.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "libraryType": {
+          "type": "string",
+          "enum": ["fabric", "rhinestone", "eye_color", "ribbon_color", "yarn"]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "hex": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^#[0-9a-fA-F]{3,8}$"
+        },
+        "materialNote": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "imageUrl": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "libraryType",
+        "code",
+        "name",
+        "hex",
+        "materialNote",
+        "imageUrl",
+        "isPublic",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StorefrontConfig": {
+      "title": "StorefrontConfig",
+      "description": "Public storefront homepage banner, category cover images, and LINE Official Account settings.",
+      "type": "object",
+      "properties": {
+        "brandName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "brandSubtitle": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "banner": {
+          "type": "object"
+        },
+        "featuredCategoryImage": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "customCategoryImage": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "crochetBibCategoryImage": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "crochetOutfitCategoryImage": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "sectionVisibility": {
+          "type": "object"
+        },
+        "lineConfig": {
+          "type": "object"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "brandName",
+        "brandSubtitle",
+        "banner",
+        "featuredCategoryImage",
+        "customCategoryImage",
+        "crochetBibCategoryImage",
+        "crochetOutfitCategoryImage",
+        "sectionVisibility",
+        "lineConfig",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "AdminProfile": {
+      "title": "AdminProfile",
+      "description": "Admin role registry record isolated for RBAC verification.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"]
+        },
+        "grantedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "role", "grantedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Storefront doll clothing products. Published items are publicly readable; all writes require verified Admin."
+    },
+    "/swatches/{swatchId}": {
+      "schema": { "$ref": "#/entities/FabricSwatch" },
+      "description": "Shared fabric swatches. Public swatches are readable; all writes require verified Admin."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/StorefrontConfig" },
+      "description": "Singleton storefront settings document at /settings/storefront. Public get on storefront doc; admin-only writes."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminProfile" },
+      "description": "PII-isolated admin role registry. Readable only by owner or admin; writable only by existing verified admin."
+    }
+  }
+}

@@ -1,0 +1,271 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    // Zero-DB-read bootstrapped primary admin check (safe inside allow list)
+    function isPrimaryAdmin() {
+      return isVerifiedUser() &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() == 'pinky890114@gmail.com';
+    }
+
+    // Full admin check for single-document get / write operations
+    function isAdmin() {
+      return isPrimaryAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints (Anti-Update-Gap)
+    // -------------------------------------------------------------------------
+    function isValidProduct(data, productId) {
+      return data.keys().hasAll([
+        'id', 'code', 'name', 'categoryId', 'basePrice', 'status',
+        'dollSizes', 'summary', 'materialAndCare', 'leadTime',
+        'images', 'variantGroups', 'isPublished', 'isRecommended',
+        'isNewArrival', 'sortOrder', 'allowCustomNote',
+        'updatedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'code', 'name', 'categoryId', 'basePrice', 'status',
+        'dollSizes', 'summary', 'materialAndCare', 'leadTime',
+        'images', 'variantGroups', 'isPublished', 'isRecommended',
+        'isNewArrival', 'sortOrder', 'allowCustomNote',
+        'updatedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.id == productId &&
+      isValidString(data.code, 1, 40) &&
+      isValidString(data.name, 1, 120) &&
+      data.categoryId in ['featured', 'custom', 'crochet_bib', 'crochet_outfit'] &&
+      (data.basePrice is int || data.basePrice is float) &&
+      data.basePrice >= 0 && data.basePrice <= 1000000 &&
+      data.status in ['new', 'in_stock', 'made_to_order', 'sold_out'] &&
+      data.dollSizes is list &&
+      data.dollSizes.size() >= 1 && data.dollSizes.size() <= 5 &&
+      data.dollSizes.hasOnly(['努努', '海星體', '指偶', 'es熊娃', 'es醜娃']) &&
+      isValidString(data.summary, 0, 1000) &&
+      isValidString(data.materialAndCare, 0, 2000) &&
+      isValidString(data.leadTime, 0, 200) &&
+      data.images is list &&
+      data.images.size() <= 10 &&
+      (data.images.size() == 0 || (data.images[0] is string && data.images[0].size() <= 350000)) &&
+      data.variantGroups is list &&
+      data.variantGroups.size() <= 20 &&
+      (data.variantGroups.size() == 0 || data.variantGroups[0] is map) &&
+      data.isPublished is bool &&
+      data.isRecommended is bool &&
+      data.isNewArrival is bool &&
+      (data.sortOrder is int || data.sortOrder is float) &&
+      data.sortOrder >= 0 && data.sortOrder <= 100000 &&
+      data.allowCustomNote is bool &&
+      isValidString(data.updatedBy, 1, 128) &&
+      data.updatedBy == request.auth.uid &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidSwatch(data, swatchId) {
+      return data.keys().hasAll([
+        'id', 'libraryType', 'code', 'name', 'hex', 'materialNote', 'imageUrl',
+        'isPublic', 'updatedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'libraryType', 'code', 'name', 'hex', 'materialNote', 'imageUrl',
+        'isPublic', 'updatedBy', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      data.id == swatchId &&
+      data.libraryType in ['fabric', 'rhinestone', 'eye_color', 'ribbon_color', 'yarn'] &&
+      isValidString(data.code, 1, 40) &&
+      isValidString(data.name, 1, 80) &&
+      isValidString(data.hex, 4, 16) &&
+      data.hex.matches('^#[0-9a-fA-F]{3,8}$') &&
+      isValidString(data.materialNote, 0, 600) &&
+      isValidString(data.imageUrl, 0, 350000) &&
+      data.isPublic is bool &&
+      isValidString(data.updatedBy, 1, 128) &&
+      data.updatedBy == request.auth.uid &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidStorefrontConfig(data) {
+      return data.keys().hasAll([
+        'brandName', 'brandSubtitle', 'banner',
+        'featuredCategoryImage', 'customCategoryImage',
+        'crochetBibCategoryImage', 'crochetOutfitCategoryImage',
+        'sectionVisibility', 'lineConfig', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'brandName', 'brandSubtitle', 'banner',
+        'featuredCategoryImage', 'customCategoryImage',
+        'crochetBibCategoryImage', 'crochetOutfitCategoryImage',
+        'sectionVisibility', 'lineConfig', 'updatedBy', 'updatedAt'
+      ]) &&
+      isValidString(data.brandName, 1, 80) &&
+      isValidString(data.brandSubtitle, 0, 160) &&
+      data.banner is map &&
+      data.banner.keys().hasAll(['title', 'subtitle', 'ctaLabel', 'targetCategory', 'imageUrl']) &&
+      data.banner.keys().hasOnly(['title', 'subtitle', 'ctaLabel', 'targetCategory', 'imageUrl']) &&
+      isValidString(data.banner.title, 1, 160) &&
+      isValidString(data.banner.subtitle, 0, 400) &&
+      isValidString(data.banner.ctaLabel, 1, 60) &&
+      data.banner.targetCategory in ['featured', 'custom', 'crochet_bib', 'crochet_outfit', 'proxy', 'crochet', 'all'] &&
+      isValidString(data.banner.imageUrl, 0, 350000) &&
+      isValidString(data.featuredCategoryImage, 0, 350000) &&
+      isValidString(data.customCategoryImage, 0, 350000) &&
+      isValidString(data.crochetBibCategoryImage, 0, 350000) &&
+      isValidString(data.crochetOutfitCategoryImage, 0, 350000) &&
+      data.sectionVisibility is map &&
+      data.sectionVisibility.keys().hasAll(['proxy', 'crochet']) &&
+      data.sectionVisibility.keys().hasOnly(['proxy', 'crochet']) &&
+      data.sectionVisibility.proxy is bool &&
+      data.sectionVisibility.crochet is bool &&
+      data.lineConfig is map &&
+      data.lineConfig.keys().hasAll(['officialAccountId', 'displayName', 'customerServiceGreeting']) &&
+      data.lineConfig.keys().hasOnly(['officialAccountId', 'displayName', 'customerServiceGreeting', 'liffId']) &&
+      isValidString(data.lineConfig.officialAccountId, 1, 64) &&
+      isValidString(data.lineConfig.displayName, 1, 80) &&
+      isValidString(data.lineConfig.customerServiceGreeting, 0, 400) &&
+      (!('liffId' in data.lineConfig) || isValidString(data.lineConfig.liffId, 0, 128)) &&
+      isValidString(data.updatedBy, 1, 128) &&
+      data.updatedBy == request.auth.uid &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidAdminProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'grantedBy', 'createdAt']) &&
+      data.keys().hasOnly(['uid', 'email', 'role', 'grantedBy', 'createdAt']) &&
+      isValidId(data.uid) &&
+      data.uid == userId &&
+      isValidString(data.email, 3, 160) &&
+      data.role == 'admin' &&
+      isValidString(data.grantedBy, 1, 128) &&
+      data.grantedBy == request.auth.uid &&
+      data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    match /products/{productId} {
+      allow get: if isValidId(productId) && ((resource != null && existing().isPublished == true) || isAdmin());
+      allow list: if existing().isPublished == true || isPrimaryAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(productId) &&
+        isValidProduct(incoming(), productId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        isValidId(productId) &&
+        isValidProduct(incoming(), productId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'code', 'name', 'categoryId', 'basePrice', 'status',
+          'dollSizes', 'summary', 'materialAndCare', 'leadTime',
+          'images', 'variantGroups', 'isPublished', 'isRecommended',
+          'isNewArrival', 'sortOrder', 'allowCustomNote',
+          'updatedBy', 'updatedAt'
+        ]) &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(productId) && isAdmin();
+    }
+
+    match /swatches/{swatchId} {
+      allow get: if isValidId(swatchId) && ((resource != null && existing().isPublic == true) || isAdmin());
+      allow list: if existing().isPublic == true || isPrimaryAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(swatchId) &&
+        isValidSwatch(incoming(), swatchId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        isValidId(swatchId) &&
+        isValidSwatch(incoming(), swatchId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'libraryType', 'code', 'name', 'hex', 'materialNote', 'imageUrl',
+          'isPublic', 'updatedBy', 'updatedAt'
+        ]) &&
+        isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(swatchId) && isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && (settingId == 'storefront' || isAdmin());
+      allow list: if isPrimaryAdmin();
+      allow create: if isVerifiedUser() &&
+        settingId == 'storefront' &&
+        isValidStorefrontConfig(incoming()) &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isVerifiedUser() &&
+        settingId == 'storefront' &&
+        isValidStorefrontConfig(incoming()) &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'brandName', 'brandSubtitle', 'banner',
+          'featuredCategoryImage', 'customCategoryImage',
+          'crochetBibCategoryImage', 'crochetOutfitCategoryImage',
+          'sectionVisibility', 'lineConfig', 'updatedBy', 'updatedAt'
+        ]) &&
+        isAdmin();
+      allow delete: if false;
+    }
+
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isPrimaryAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidAdminProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(userId) && isAdmin();
+    }
+  }
+}

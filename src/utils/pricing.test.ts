@@ -106,11 +106,11 @@ test('formatLineOrderMessage contains all 9 required LINE order fields and estim
 });
 
 test('buildLineOaMessageUrl encodes LINE official account ID and message with encodeURIComponent', () => {
-  assert.equal(normalizeLineAccountId('yourtreasure'), '@yourtreasure');
-  assert.equal(normalizeLineAccountId('@yourtreasure'), '@yourtreasure');
+  assert.equal(normalizeLineAccountId('182oocrl'), '@182oocrl');
+  assert.equal(normalizeLineAccountId('@182oocrl'), '@182oocrl');
 
-  const url = buildLineOaMessageUrl('yourtreasure', '你好 NT$ 1,000\n測試');
-  assert.ok(url.startsWith('https://line.me/R/oaMessage/%40yourtreasure/?'));
+  const url = buildLineOaMessageUrl('@182oocrl', '你好 NT$ 1,000\n測試');
+  assert.ok(url.startsWith('https://line.me/R/oaMessage/%40182oocrl/?'));
   assert.ok(url.includes(encodeURIComponent('你好 NT$ 1,000\n測試')));
 });
 
@@ -170,4 +170,99 @@ test('filterAndSortProducts searches by product code and hides unpublished produ
   });
   assert.equal(byCode.length, 1);
   assert.equal(byCode[0].id, 'prod-custom-bonnet-dress');
+});
+
+test('filterAndSortProducts respects major section visibility and filters proxy vs crochet sections', () => {
+  const baseFilters = {
+    category: 'all' as const,
+    searchQuery: '',
+    dollSize: 'all' as const,
+    status: 'all' as const,
+    priceRange: 'all' as const,
+    sortBy: 'default' as const,
+  };
+
+  const crochetOnly = filterAndSortProducts(INITIAL_PRODUCTS, {
+    ...baseFilters,
+    category: 'crochet',
+  });
+  assert.equal(crochetOnly.length, 2);
+  assert.ok(
+    crochetOnly.every(
+      (p) => p.categoryId === 'crochet_bib' || p.categoryId === 'crochet_outfit'
+    )
+  );
+
+  const hiddenCrochet = filterAndSortProducts(
+    INITIAL_PRODUCTS,
+    baseFilters,
+    { proxy: true, crochet: false }
+  );
+  assert.ok(
+    hiddenCrochet.every(
+      (p) => p.categoryId === 'featured' || p.categoryId === 'custom'
+    )
+  );
+
+  const hiddenProxy = filterAndSortProducts(
+    INITIAL_PRODUCTS,
+    baseFilters,
+    { proxy: false, crochet: true }
+  );
+  assert.equal(hiddenProxy.length, 2);
+  assert.ok(
+    hiddenProxy.every(
+      (p) => p.categoryId === 'crochet_bib' || p.categoryId === 'crochet_outfit'
+    )
+  );
+
+  const bothHidden = filterAndSortProducts(
+    INITIAL_PRODUCTS,
+    baseFilters,
+    { proxy: false, crochet: false }
+  );
+  assert.equal(bothHidden.length, 0);
+});
+
+test('standalone URL router supports proxy and crochet section/sub-category routes', () => {
+  assert.deepEqual(parseRouteFromPath('/category/proxy'), {
+    page: 'catalog',
+    category: 'proxy',
+  });
+  assert.deepEqual(parseRouteFromPath('/category/crochet'), {
+    page: 'catalog',
+    category: 'crochet',
+  });
+  assert.deepEqual(parseRouteFromPath('/category/crochet_bib'), {
+    page: 'catalog',
+    category: 'crochet_bib',
+  });
+  assert.deepEqual(parseRouteFromPath('/category/crochet_outfit'), {
+    page: 'catalog',
+    category: 'crochet_outfit',
+  });
+  assert.equal(
+    buildRoutePath({ page: 'catalog', category: 'crochet_bib' }),
+    '/category/crochet_bib'
+  );
+});
+
+test('crochet product calculates yarn library swatch code and LINE order summary cleanly', () => {
+  const bib = INITIAL_PRODUCTS.find((p) => p.id === 'prod-crochet-scallop-bib')!;
+  const msg = formatLineOrderMessage({
+    product: bib,
+    selections: {
+      'vg-size': ['opt-esbear'], // +30
+      'vg-yarn-swatch': ['opt-yn-rose'], // +30, code YN-03
+      'vg-bib-addons': ['opt-bib-pearl'], // +40
+    },
+    swatches: INITIAL_SWATCHES,
+    customNote: '',
+    productUrl: 'https://example.com/product/prod-crochet-scallop-bib',
+    brandName: '天冷穿件衣',
+  });
+  assert.match(msg, /天冷穿件衣/);
+  assert.match(msg, /商品分類：娃用圍兜兜/);
+  assert.match(msg, /柔霧玫瑰蕾絲線（色號 YN-03）/);
+  assert.match(msg, /預估總價格：NT\$ 420（預估報價）/);
 });

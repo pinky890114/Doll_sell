@@ -1,9 +1,11 @@
 import {
   CATEGORY_LABELS,
+  getSectionForCategory,
   type CartItem,
   type CatalogFilters,
   type FabricSwatch,
   type Product,
+  type SectionVisibilityConfig,
   type SelectedVariantsMap,
 } from '../types/store';
 import { buildProductShareUrl } from './router';
@@ -189,7 +191,8 @@ export function extractSelectedDollSize(
 
 export function filterAndSortProducts(
   products: Product[],
-  filters: CatalogFilters
+  filters: CatalogFilters,
+  sectionVisibility?: SectionVisibilityConfig
 ): Product[] {
   const query = filters.searchQuery.trim().toLowerCase();
 
@@ -197,7 +200,22 @@ export function filterAndSortProducts(
     if (!filters.includeUnpublished && !product.isPublished) {
       return false;
     }
-    if (filters.category !== 'all' && product.categoryId !== filters.category) {
+    const section = getSectionForCategory(product.categoryId);
+    if (sectionVisibility && !sectionVisibility[section]) {
+      return false;
+    }
+    if (filters.category === 'proxy' && section !== 'proxy') {
+      return false;
+    }
+    if (filters.category === 'crochet' && section !== 'crochet') {
+      return false;
+    }
+    if (
+      filters.category !== 'all' &&
+      filters.category !== 'proxy' &&
+      filters.category !== 'crochet' &&
+      product.categoryId !== filters.category
+    ) {
       return false;
     }
     if (
@@ -276,7 +294,7 @@ export function formatLineOrderMessage({
   swatches,
   customNote,
   productUrl,
-  brandName = 'YourTreasure娃衣代理',
+  brandName = '天冷穿件衣',
 }: LineOrderMessageParams): string {
   const calc = calculateProductPrice(product, selections, swatches);
   const dollSize = extractSelectedDollSize(product, selections);
@@ -351,7 +369,7 @@ export function createCartItemFromSelection(params: {
 export function formatCartLineOrderMessage(
   items: CartItem[],
   origin?: string,
-  brandName = 'YourTreasure娃衣代理'
+  brandName = '天冷穿件衣'
 ): string {
   const totalEstimated = items.reduce(
     (sum, item) => sum + item.unitEstimatedPrice * item.quantity,

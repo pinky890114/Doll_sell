@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { ArrowRight, MessageCircle, Search, ShieldCheck } from 'lucide-react';
-import type { CategoryId, HomeConfig, Product } from '../types/store';
+import {
+  getSectionForCategory,
+  SECTION_LABELS,
+  type CatalogCategoryFilter,
+  type HomeConfig,
+  type Product,
+} from '../types/store';
 import {
   buildLineCustomerServiceUrl,
   LINE_BRAND_GREEN,
@@ -16,7 +22,7 @@ interface HomeViewProps {
   favorites: string[];
   onToggleFavorite: (productId: string) => void;
   onSelectProduct: (productId: string) => void;
-  onNavigateCategory: (category: CategoryId | 'all', searchQuery?: string) => void;
+  onNavigateCategory: (category: CatalogCategoryFilter, searchQuery?: string) => void;
   onOpenAdmin: () => void;
 }
 
@@ -31,22 +37,46 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const [searchInput, setSearchInput] = useState('');
 
-  const publishedProducts = products
-    .filter((p) => p.isPublished)
+  const visibility = homeConfig.sectionVisibility ?? { proxy: true, crochet: true };
+
+  const visibleProducts = products
+    .filter((p) => p.isPublished && visibility[getSectionForCategory(p.categoryId)])
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  const newArrivals = publishedProducts
+  const newArrivals = visibleProducts
     .filter((p) => p.isNewArrival)
     .slice(0, 4);
 
-  const recommendedProducts = publishedProducts
+  const recommendedProducts = visibleProducts
     .filter((p) => p.isRecommended)
     .slice(0, 4);
 
-  const featuredCount = publishedProducts.filter((p) => p.categoryId === 'featured').length;
-  const customCount = publishedProducts.filter((p) => p.categoryId === 'custom').length;
+  const featuredCount = visibleProducts.filter((p) => p.categoryId === 'featured').length;
+  const customCount = visibleProducts.filter((p) => p.categoryId === 'custom').length;
+  const crochetBibCount = visibleProducts.filter((p) => p.categoryId === 'crochet_bib').length;
+  const crochetOutfitCount = visibleProducts.filter((p) => p.categoryId === 'crochet_outfit').length;
+
   const lineServiceUrl = buildLineCustomerServiceUrl(homeConfig.lineConfig);
   const normalizedLineId = normalizeLineAccountId(homeConfig.lineConfig.officialAccountId);
+
+  const hasAnyVisibleSection = visibility.proxy || visibility.crochet;
+
+  const resolveBannerTarget = (): CatalogCategoryFilter => {
+    const target = homeConfig.banner.targetCategory;
+    if (
+      (target === 'proxy' || target === 'featured' || target === 'custom') &&
+      !visibility.proxy
+    ) {
+      return visibility.crochet ? 'crochet' : 'all';
+    }
+    if (
+      (target === 'crochet' || target === 'crochet_bib' || target === 'crochet_outfit') &&
+      !visibility.crochet
+    ) {
+      return visibility.proxy ? 'proxy' : 'all';
+    }
+    return target;
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +89,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       <section aria-label="商品搜尋" className="pt-3 pb-4 md:pt-6 md:pb-6">
         <form onSubmit={handleSearchSubmit} className="relative max-w-xl mx-auto md:mx-0">
           <label htmlFor="home-search-input" className="sr-only">
-            搜尋娃衣名稱、尺寸或材質
+            搜尋娃衣、編織圍兜兜、尺寸或材質
           </label>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6E6962]" />
           <input
@@ -67,7 +97,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="搜尋娃衣、編號、尺寸或布料…"
+            placeholder="搜尋娃衣、圍兜兜、編號、尺寸或線材…"
             className="w-full min-h-[44px] rounded-xl border border-[#E5E0D8] bg-white pl-10 pr-20 text-sm text-[#2B2825] placeholder:text-[#8E8880] focus:border-[#2B2825] focus:outline-none transition-colors"
           />
           <button
@@ -101,152 +131,258 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <p className="mt-2 hidden sm:block text-sm text-[#F7F5F0]/90 max-w-2xl leading-relaxed">
               {homeConfig.banner.subtitle}
             </p>
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => onNavigateCategory(homeConfig.banner.targetCategory)}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#F7F5F0] px-4 py-2.5 text-xs sm:text-sm font-medium text-[#2B2825] transition-colors hover:bg-white min-h-[42px] whitespace-nowrap"
-              >
-                <span>{homeConfig.banner.ctaLabel}</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
+            {hasAnyVisibleSection && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => onNavigateCategory(resolveBannerTarget())}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#F7F5F0] px-4 py-2.5 text-xs sm:text-sm font-medium text-[#2B2825] transition-colors hover:bg-white min-h-[42px] whitespace-nowrap"
+                >
+                  <span>{homeConfig.banner.ctaLabel}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Two Main Category Image Cards */}
-      <section aria-labelledby="categories-heading" className="mb-10 md:mb-14">
-        <div className="flex items-baseline justify-between mb-4">
-          <h2 id="categories-heading" className="font-display text-lg sm:text-xl font-semibold text-[#2B2825]">
-            商品分類
-          </h2>
-          <button
-            type="button"
-            onClick={() => onNavigateCategory('all')}
-            className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap"
-          >
-            <span>瀏覽全部</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+      {!hasAnyVisibleSection && (
+        <section className="mb-12 rounded-2xl border border-[#E5E0D8] bg-white px-6 py-14 text-center">
+          <p className="font-display text-lg font-medium text-[#2B2825]">
+            館內商品籌備整備中
+          </p>
+          <p className="mt-1.5 text-sm text-[#6E6962]">
+            目前所有前台展示區塊暫時隱藏，歡迎直接透過下方 LINE 官方客服與我們聯繫。
+          </p>
+        </section>
+      )}
 
-        <div className="grid grid-cols-2 gap-3.5 sm:gap-6">
-          <button
-            type="button"
-            onClick={() => onNavigateCategory('featured')}
-            className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
-          >
-            <SafeImage
-              src={homeConfig.featuredCategoryImage}
-              alt="特色娃衣分類"
-              fallbackTitle="特色娃衣"
-              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/75 via-[#211E1B]/15 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
-              <p className="text-[11px] sm:text-xs text-[#F7F5F0]/80">
-                精選成衣 · {featuredCount} 款
-              </p>
-              <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
-                特色娃衣
-              </h3>
-              <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
-                日常溫柔系成衣套組，少量現貨與接單製作
+      {/* Major Section 1: 娃衣代理區 */}
+      {visibility.proxy && (
+        <section aria-labelledby="section-proxy-heading" className="mb-10 md:mb-14">
+          <div className="flex items-baseline justify-between gap-4 mb-4">
+            <div>
+              <h2
+                id="section-proxy-heading"
+                className="font-display text-lg sm:text-2xl font-semibold text-[#2B2825]"
+              >
+                {SECTION_LABELS.proxy}
+              </h2>
+              <p className="text-xs text-[#6E6962] mt-0.5">
+                特色成衣與自由配色客製 · 搭配色卡庫、鑽盤庫、眼睛與緞帶選色
               </p>
             </div>
-          </button>
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('proxy')}
+              className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+            >
+              <span>瀏覽代理區</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => onNavigateCategory('custom')}
-            className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
-          >
-            <SafeImage
-              src={homeConfig.customCategoryImage}
-              alt="客製化娃衣分類"
-              fallbackTitle="客製化娃衣"
-              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/75 via-[#211E1B]/15 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
-              <p className="text-[11px] sm:text-xs text-[#F7F5F0]/80">
-                自由配色與布料色卡 · {customCount} 款
-              </p>
-              <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
-                客製化娃衣
-              </h3>
-              <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
-                自選布料色卡、蝴蝶結與蕾絲，打造專屬穿搭
+          <div className="grid grid-cols-2 gap-3.5 sm:gap-6">
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('featured')}
+              className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
+            >
+              <SafeImage
+                src={homeConfig.featuredCategoryImage}
+                alt="特色娃衣分類"
+                fallbackTitle="特色娃衣"
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/78 via-[#211E1B]/18 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
+                <p className="text-[11px] sm:text-xs text-[#F7F5F0]/85 tabular-price">
+                  精選成衣 · {featuredCount} 款
+                </p>
+                <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
+                  特色娃衣
+                </h3>
+                <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
+                  日常溫柔系成衣套組，少量現貨與接單製作
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('custom')}
+              className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
+            >
+              <SafeImage
+                src={homeConfig.customCategoryImage}
+                alt="客製化娃衣分類"
+                fallbackTitle="客製化娃衣"
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/78 via-[#211E1B]/18 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
+                <p className="text-[11px] sm:text-xs text-[#F7F5F0]/85 tabular-price">
+                  自由配色與布料色卡 · {customCount} 款
+                </p>
+                <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
+                  客製化娃衣
+                </h3>
+                <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
+                  自選布料色卡、鑽盤、眼睛與緞帶，打造專屬穿搭
+                </p>
+              </div>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Major Section 2: 毛線編織 */}
+      {visibility.crochet && (
+        <section aria-labelledby="section-crochet-heading" className="mb-10 md:mb-14">
+          <div className="flex items-baseline justify-between gap-4 mb-4">
+            <div>
+              <h2
+                id="section-crochet-heading"
+                className="font-display text-lg sm:text-2xl font-semibold text-[#2B2825]"
+              >
+                {SECTION_LABELS.crochet}
+              </h2>
+              <p className="text-xs text-[#6E6962] mt-0.5">
+                一針一線溫柔鉤織 · 嚴選線材庫色選打造暖意配件與毛衣
               </p>
             </div>
-          </button>
-        </div>
-      </section>
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('crochet')}
+              className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+            >
+              <span>瀏覽編織區</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3.5 sm:gap-6">
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('crochet_bib')}
+              className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
+            >
+              <SafeImage
+                src={homeConfig.crochetBibCategoryImage}
+                alt="娃用圍兜兜分類"
+                fallbackTitle="娃用圍兜兜"
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/78 via-[#211E1B]/18 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
+                <p className="text-[11px] sm:text-xs text-[#F7F5F0]/85 tabular-price">
+                  手工細針鉤織 · {crochetBibCount} 款
+                </p>
+                <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
+                  娃用圍兜兜
+                </h3>
+                <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
+                  花邊蕾絲與牛奶棉線材自由挑色，日常疊搭必備
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('crochet_outfit')}
+              className="group relative overflow-hidden rounded-2xl border border-[#E5E0D8] bg-[#EFECE6] aspect-[4/5] sm:aspect-[16/11] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2B2825]"
+            >
+              <SafeImage
+                src={homeConfig.crochetOutfitCategoryImage}
+                alt="鉤織娃衣分類"
+                fallbackTitle="鉤織娃衣"
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#211E1B]/78 via-[#211E1B]/18 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-[#F7F5F0]">
+                <p className="text-[11px] sm:text-xs text-[#F7F5F0]/85 tabular-price">
+                  暖系手工針織 · {crochetOutfitCount} 款
+                </p>
+                <h3 className="mt-0.5 font-display text-base sm:text-2xl font-semibold">
+                  鉤織娃衣
+                </h3>
+                <p className="mt-1 hidden sm:block text-xs text-[#F7F5F0]/80">
+                  自選線材庫色號訂製開襟毛衣、漁夫帽與保暖套組
+                </p>
+              </div>
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* New Arrivals Section */}
-      <section aria-labelledby="new-arrivals-heading" className="mb-10 md:mb-14">
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            <h2 id="new-arrivals-heading" className="font-display text-lg sm:text-xl font-semibold text-[#2B2825]">
-              最新商品
-            </h2>
-            <p className="text-xs text-[#6E6962] mt-0.5">本季新上架的手作款式</p>
+      {visibleProducts.length > 0 && (
+        <section aria-labelledby="new-arrivals-heading" className="mb-10 md:mb-14">
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <h2 id="new-arrivals-heading" className="font-display text-lg sm:text-xl font-semibold text-[#2B2825]">
+                最新商品
+              </h2>
+              <p className="text-xs text-[#6E6962] mt-0.5">本季新上架的手作款式</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('all')}
+              className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap"
+            >
+              <span>查看全部</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigateCategory('all')}
-            className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap"
-          >
-            <span>查看全部</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-6">
-          {(newArrivals.length > 0 ? newArrivals : publishedProducts.slice(0, 4)).map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              isFavorite={favorites.includes(product.id)}
-              onToggleFavorite={onToggleFavorite}
-              onSelect={onSelectProduct}
-            />
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-6">
+            {(newArrivals.length > 0 ? newArrivals : visibleProducts.slice(0, 4)).map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isFavorite={favorites.includes(product.id)}
+                onToggleFavorite={onToggleFavorite}
+                onSelect={onSelectProduct}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Recommended Products Section */}
-      <section aria-labelledby="recommended-heading" className="mb-12">
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            <h2 id="recommended-heading" className="font-display text-lg sm:text-xl font-semibold text-[#2B2825]">
-              推薦商品
-            </h2>
-            <p className="text-xs text-[#6E6962] mt-0.5">主理人精選人氣搭配</p>
+      {visibleProducts.length > 0 && (
+        <section aria-labelledby="recommended-heading" className="mb-12">
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <h2 id="recommended-heading" className="font-display text-lg sm:text-xl font-semibold text-[#2B2825]">
+                推薦商品
+              </h2>
+              <p className="text-xs text-[#6E6962] mt-0.5">主理人精選人氣搭配</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateCategory('all')}
+              className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap"
+            >
+              <span>更多推薦</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigateCategory('featured')}
-            className="text-xs sm:text-sm text-[#6E6962] hover:text-[#2B2825] transition-colors min-h-[40px] inline-flex items-center gap-1 whitespace-nowrap"
-          >
-            <span>更多推薦</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-6">
-          {(recommendedProducts.length > 0 ? recommendedProducts : publishedProducts.slice(0, 4)).map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              isFavorite={favorites.includes(product.id)}
-              onToggleFavorite={onToggleFavorite}
-              onSelect={onSelectProduct}
-            />
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-6">
+            {(recommendedProducts.length > 0 ? recommendedProducts : visibleProducts.slice(0, 4)).map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isFavorite={favorites.includes(product.id)}
+                onToggleFavorite={onToggleFavorite}
+                onSelect={onSelectProduct}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* LINE Official Service & PWA Install Footer */}
       <footer className="border-t border-[#E5E0D8] pt-8 space-y-6">

@@ -1,11 +1,21 @@
-import type { CategoryId } from '../types/store';
+import type { CatalogCategoryFilter } from '../types/store';
 
 export type AppRoute =
   | { page: 'home' }
-  | { page: 'catalog'; category: CategoryId | 'all' }
+  | { page: 'catalog'; category: CatalogCategoryFilter }
   | { page: 'product'; productId: string }
   | { page: 'favorites' }
   | { page: 'admin' };
+
+const VALID_CATEGORY_ROUTES: CatalogCategoryFilter[] = [
+  'all',
+  'proxy',
+  'featured',
+  'custom',
+  'crochet',
+  'crochet_bib',
+  'crochet_outfit',
+];
 
 export function parseRouteFromPath(pathname: string): AppRoute {
   const clean = pathname.replace(/\/+$/, '') || '/';
@@ -22,16 +32,16 @@ export function parseRouteFromPath(pathname: string): AppRoute {
     return { page: 'admin' };
   }
 
-  if (clean === '/category' || clean === '/category/all') {
+  if (clean === '/category') {
     return { page: 'catalog', category: 'all' };
   }
 
-  if (clean === '/category/featured') {
-    return { page: 'catalog', category: 'featured' };
-  }
-
-  if (clean === '/category/custom') {
-    return { page: 'catalog', category: 'custom' };
+  const categoryMatch = clean.match(/^\/category\/([^/]+)$/);
+  if (categoryMatch) {
+    const slug = decodeURIComponent(categoryMatch[1]) as CatalogCategoryFilter;
+    if (VALID_CATEGORY_ROUTES.includes(slug)) {
+      return { page: 'catalog', category: slug };
+    }
   }
 
   const productMatch = clean.match(/^\/product\/([^/]+)$/);
@@ -65,7 +75,7 @@ export function buildAbsoluteUrl(path: string, origin?: string): string {
     origin ??
     (typeof window !== 'undefined' && window.location?.origin
       ? window.location.origin
-      : 'https://yourtreasure.atelier');
+      : 'https://coldwear.atelier');
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${baseOrigin}${normalizedPath}`;
 }
@@ -75,7 +85,7 @@ export function buildProductShareUrl(productId: string, origin?: string): string
 }
 
 export function buildCategoryShareUrl(
-  category: CategoryId | 'all',
+  category: CatalogCategoryFilter,
   origin?: string
 ): string {
   return buildAbsoluteUrl(buildRoutePath({ page: 'catalog', category }), origin);

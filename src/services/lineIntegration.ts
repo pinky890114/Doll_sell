@@ -7,7 +7,7 @@ export const LINE_BRAND_GREEN = '#06C755';
  */
 export function normalizeLineAccountId(rawId: string): string {
   const trimmed = rawId.trim();
-  if (!trimmed) return '@yourtreasure';
+  if (!trimmed) return '@182oocrl';
   return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
 }
 
@@ -36,7 +36,7 @@ export function buildLineCustomerServiceUrl(
   const message =
     customMessage?.trim() ||
     config.customerServiceGreeting?.trim() ||
-    '您好，我想詢問 YourTreasure娃衣代理 的商品資訊，謝謝！';
+    '您好，我想詢問 天冷穿件衣 的商品資訊，謝謝！';
   return buildLineOaMessageUrl(config.officialAccountId, message);
 }
 

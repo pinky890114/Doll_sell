@@ -69,7 +69,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'c
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 id="pwa-guide-title" className="font-display text-lg font-semibold text-[#2B2825]">
-                  將 YourTreasure娃衣代理 加入主畫面
+                  將 天冷穿件衣 加入主畫面
                 </h3>
                 <p className="mt-1 text-xs text-[#6E6962]">
                   安裝後可全螢幕瀏覽，體驗更貼近手機購物 App

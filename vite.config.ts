@@ -15,9 +15,9 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
         manifest: {
           id: '/',
-          name: 'YourTreasure娃衣代理｜手作娃衣展示與客製訂購',
-          short_name: 'YourTreasure',
-          description: 'YourTreasure娃衣代理，提供特色娃衣、布料色卡客製、預估報價試算與 LINE 官方帳號訂購。',
+          name: '天冷穿件衣｜娃衣代理與手作毛線編織',
+          short_name: '天冷穿件衣',
+          description: '天冷穿件衣，提供娃衣代理區與毛線編織（娃用圍兜兜、鉤織娃衣），支援色卡線材客製與 LINE 官方帳號訂購。',
           theme_color: '#F7F5F0',
           background_color: '#F7F5F0',
           display: 'standalone',
@@ -45,6 +45,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff,woff2}'],
           runtimeCaching: [
             {

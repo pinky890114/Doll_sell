@@ -12,13 +12,19 @@ import {
 import {
   CATEGORY_LABELS,
   DOLL_SIZES,
+  getSectionForCategory,
+  SECTION_LABELS,
   STATUS_LABELS,
+  SWATCH_LIBRARY_LABELS,
+  SWATCH_LIBRARY_META,
+  SWATCH_LIBRARY_ORDER,
   type CategoryId,
   type DollSize,
   type FabricSwatch,
   type Product,
   type ProductStatus,
   type SelectionMode,
+  type SwatchLibraryType,
   type VariantDisplayType,
   type VariantGroup,
   type VariantOption,
@@ -43,6 +49,9 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
 }) => {
   const [draft, setDraft] = useState<Product>(() =>
     JSON.parse(JSON.stringify(initialProduct))
+  );
+  const [basePriceInput, setBasePriceInput] = useState<string>(() =>
+    isCreating ? '' : String(initialProduct.basePrice)
   );
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -149,8 +158,14 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
     }));
   };
 
+  const getSwatchesForGroup = (group: VariantGroup): FabricSwatch[] => {
+    if (!group.swatchLibrary) return swatches;
+    return swatches.filter((s) => (s.libraryType || 'fabric') === group.swatchLibrary);
+  };
+
   const addOption = (group: VariantGroup) => {
-    const firstSwatch = swatches[0];
+    const pool = getSwatchesForGroup(group);
+    const firstSwatch = pool[0] || swatches[0];
     const newOpt: VariantOption = {
       id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       label: group.displayType === 'swatch' && firstSwatch ? firstSwatch.name : '新選項',
@@ -160,6 +175,30 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
       swatchId: group.displayType === 'swatch' ? firstSwatch?.id : undefined,
     };
     updateGroup(group.id, { options: [...group.options, newOpt] });
+  };
+
+  const importAllLibrarySwatches = (group: VariantGroup) => {
+    const pool = getSwatchesForGroup(group);
+    if (pool.length === 0) return;
+    const existingSwatchIds = new Set(
+      group.options.map((o) => o.swatchId).filter(Boolean)
+    );
+    const newOpts: VariantOption[] = pool
+      .filter((sw) => !existingSwatchIds.has(sw.id))
+      .map((sw, idx) => ({
+        id: `opt-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+        label: sw.name,
+        priceDelta: 0,
+        available: true,
+        swatchId: sw.id,
+      }));
+    if (newOpts.length === 0) return;
+    // If the only existing option is an unbound placeholder, replace it cleanly
+    const cleanedExisting =
+      group.options.length === 1 && !group.options[0].swatchId
+        ? []
+        : group.options;
+    updateGroup(group.id, { options: [...cleanedExisting, ...newOpts] });
   };
 
   const updateOption = (
@@ -203,8 +242,9 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
       setFormError('請填寫商品名稱');
       return;
     }
-    if (draft.basePrice < 0 || Number.isNaN(draft.basePrice)) {
-      setFormError('請輸入有效的基礎價格（新台幣）');
+    const parsedPrice = Number(basePriceInput);
+    if (basePriceInput.trim() === '' || parsedPrice < 0 || Number.isNaN(parsedPrice)) {
+      setFormError('請輸入有效的底價金額（新台幣）');
       return;
     }
     if (draft.dollSizes.length === 0) {
@@ -214,6 +254,7 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
     setFormError(null);
     onSave({
       ...draft,
+      basePrice: parsedPrice,
       code: draft.code.trim(),
       name: draft.name.trim(),
       summary: draft.summary.trim(),
@@ -291,7 +332,7 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
 
           <div>
             <label htmlFor="prod-category" className="block text-xs font-medium text-[#6E6962] mb-1.5">
-              商品分類
+              所屬區塊與商品分類
             </label>
             <select
               id="prod-category"
@@ -301,9 +342,20 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
               }
               className="w-full min-h-[44px] rounded-xl border border-[#E5E0D8] bg-white px-3.5 text-sm text-[#2B2825]"
             >
-              <option value="featured">{CATEGORY_LABELS.featured}</option>
-              <option value="custom">{CATEGORY_LABELS.custom}</option>
+              <optgroup label={SECTION_LABELS.proxy}>
+                <option value="featured">{CATEGORY_LABELS.featured}</option>
+                <option value="custom">{CATEGORY_LABELS.custom}</option>
+              </optgroup>
+              <optgroup label={SECTION_LABELS.crochet}>
+                <option value="crochet_bib">{CATEGORY_LABELS.crochet_bib}</option>
+                <option value="crochet_outfit">{CATEGORY_LABELS.crochet_outfit}</option>
+              </optgroup>
             </select>
+            {getSectionForCategory(draft.categoryId) === 'crochet' && (
+              <p className="mt-1 text-[11px] text-[#5F6F61]">
+                此分類隸屬「毛線編織」，下方規格選用「共用素材庫」時將預設連結「線材庫」。
+              </p>
+            )}
           </div>
 
           <div>
@@ -328,31 +380,30 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
 
           <div>
             <label htmlFor="prod-base-price" className="block text-xs font-medium text-[#6E6962] mb-1.5">
-              基礎價格（NT$）*
+              商品底價（NT$）*
             </label>
             <input
               id="prod-base-price"
               type="number"
               min={0}
               step={10}
-              value={draft.basePrice}
-              onChange={(e) =>
-                setDraft({ ...draft, basePrice: Number(e.target.value) })
-              }
+              value={basePriceInput}
+              placeholder="請輸入底價金額"
+              onChange={(e) => setBasePriceInput(e.target.value)}
               className="w-full min-h-[44px] rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 px-3.5 text-sm text-[#2B2825] tabular-price focus:border-[#2B2825] focus:bg-white focus:outline-none"
             />
           </div>
 
           <div>
             <label htmlFor="prod-lead-time" className="block text-xs font-medium text-[#6E6962] mb-1.5">
-              預計製作時間
+              預計工期
             </label>
             <input
               id="prod-lead-time"
               type="text"
               value={draft.leadTime}
               onChange={(e) => setDraft({ ...draft, leadTime: e.target.value })}
-              placeholder="例如：接單製作約 10–14 個工作天"
+              placeholder="工期+集運約25天。"
               className="w-full min-h-[44px] rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 px-3.5 text-sm text-[#2B2825] focus:border-[#2B2825] focus:bg-white focus:outline-none"
             />
           </div>
@@ -385,14 +436,15 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
 
           <div className="md:col-span-2">
             <label htmlFor="prod-summary" className="block text-xs font-medium text-[#6E6962] mb-1.5">
-              商品簡介
+              商品簡介（可換行）
             </label>
             <textarea
               id="prod-summary"
-              rows={2}
+              rows={4}
               value={draft.summary}
+              placeholder="可按 Enter 換行輸入商品特色與配件說明…"
               onChange={(e) => setDraft({ ...draft, summary: e.target.value })}
-              className="w-full rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 p-3 text-sm text-[#2B2825] focus:border-[#2B2825] focus:bg-white focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 p-3 text-sm text-[#2B2825] leading-relaxed focus:border-[#2B2825] focus:bg-white focus:outline-none"
             />
           </div>
 
@@ -402,12 +454,12 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
             </label>
             <textarea
               id="prod-material"
-              rows={2}
+              rows={10}
               value={draft.materialAndCare}
               onChange={(e) =>
                 setDraft({ ...draft, materialAndCare: e.target.value })
               }
-              className="w-full rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 p-3 text-sm text-[#2B2825] focus:border-[#2B2825] focus:bg-white focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E0D8] bg-[#F7F5F0]/50 p-3 text-sm text-[#2B2825] leading-relaxed focus:border-[#2B2825] focus:bg-white focus:outline-none"
             />
           </div>
 
@@ -561,7 +613,7 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
               動態規格群組設定
             </h3>
             <p className="text-xs text-[#6E6962]">
-              可自由新增、排序與刪除規格群組，設定文字按鈕、色塊或連結共用布料色卡
+              可自由新增、排序與刪除規格群組，設定文字按鈕、色塊，或連結共用色卡庫、線材庫、鑽盤庫、眼睛顏色與緞帶顏色
             </p>
           </div>
           <button
@@ -637,16 +689,25 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
                     </label>
                     <select
                       value={group.displayType}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const nextDisplay = e.target.value as VariantDisplayType;
+                        const defaultLib: SwatchLibraryType =
+                          getSectionForCategory(draft.categoryId) === 'crochet'
+                            ? 'yarn'
+                            : 'fabric';
                         updateGroup(group.id, {
-                          displayType: e.target.value as VariantDisplayType,
-                        })
-                      }
+                          displayType: nextDisplay,
+                          swatchLibrary:
+                            nextDisplay === 'swatch'
+                              ? group.swatchLibrary || defaultLib
+                              : group.swatchLibrary,
+                        });
+                      }}
                       className="w-full min-h-[40px] rounded-lg border border-[#E5E0D8] bg-white px-3 text-xs sm:text-sm"
                     >
                       <option value="text">文字按鈕</option>
                       <option value="color">顏色色塊</option>
-                      <option value="swatch">共用布料色卡（可放大）</option>
+                      <option value="swatch">共用素材庫（色卡／線材／鑽盤／眼睛／緞帶）</option>
                     </select>
                   </div>
                   <div>
@@ -668,6 +729,53 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
                     </select>
                   </div>
                 </div>
+
+                {group.displayType === 'swatch' && (
+                  <div className="flex flex-wrap items-end justify-between gap-2.5 rounded-lg border border-[#E5E0D8] bg-white p-3">
+                    <div className="min-w-[180px] flex-1">
+                      <label className="block text-[11px] font-medium text-[#6E6962] mb-1">
+                        綁定素材庫來源
+                      </label>
+                      <select
+                        value={group.swatchLibrary || ''}
+                        onChange={(e) =>
+                          updateGroup(group.id, {
+                            swatchLibrary: (e.target.value || undefined) as
+                              | SwatchLibraryType
+                              | undefined,
+                          })
+                        }
+                        className="w-full min-h-[38px] rounded-lg border border-[#E5E0D8] bg-white px-2.5 text-xs text-[#2B2825]"
+                      >
+                        <option value="">全部素材庫（依分類顯示）</option>
+                        {SWATCH_LIBRARY_ORDER.map((lib) => {
+                          const cnt = swatches.filter(
+                            (s) => (s.libraryType || 'fabric') === lib
+                          ).length;
+                          return (
+                            <option key={lib} value={lib}>
+                              {SWATCH_LIBRARY_LABELS[lib]}（{SWATCH_LIBRARY_META[lib].sectionHint} · {cnt} 項）
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => importAllLibrarySwatches(group)}
+                      className="min-h-[38px] inline-flex items-center gap-1 rounded-lg border border-[#5F6F61] bg-[#5F6F61]/10 px-3 text-xs font-medium text-[#3D4B3F] hover:bg-[#5F6F61]/15 whitespace-nowrap"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>
+                        一鍵帶入
+                        {group.swatchLibrary
+                          ? `「${SWATCH_LIBRARY_LABELS[group.swatchLibrary]}」`
+                          : '全部'}
+                        項目
+                      </span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Options inside group */}
                 <div className="space-y-2.5">
@@ -713,10 +821,11 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
                             min={0}
                             step={10}
                             aria-label="加價金額"
-                            value={opt.priceDelta}
+                            placeholder="0"
+                            value={opt.priceDelta === 0 ? '' : opt.priceDelta}
                             onChange={(e) =>
                               updateOption(group.id, opt.id, {
-                                priceDelta: Number(e.target.value) || 0,
+                                priceDelta: e.target.value === '' ? 0 : Number(e.target.value) || 0,
                               })
                             }
                             className="w-full min-h-[38px] rounded-lg border border-[#E5E0D8] pl-11 pr-2 text-xs tabular-price"
@@ -745,7 +854,7 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
                           </div>
                         ) : group.displayType === 'swatch' ? (
                           <select
-                            aria-label="綁定共用色卡"
+                            aria-label="綁定共用素材庫項目"
                             value={opt.swatchId || ''}
                             onChange={(e) => {
                               const sw = swatches.find((s) => s.id === e.target.value);
@@ -756,12 +865,32 @@ export const AdminProductEditor: React.FC<AdminProductEditorProps> = ({
                             }}
                             className="w-full min-h-[38px] rounded-lg border border-[#E5E0D8] px-2 text-xs"
                           >
-                            <option value="">選擇共用色卡…</option>
-                            {swatches.map((sw) => (
-                              <option key={sw.id} value={sw.id}>
-                                {sw.code} · {sw.name}
-                              </option>
-                            ))}
+                            <option value="">
+                              {group.swatchLibrary
+                                ? `選擇${SWATCH_LIBRARY_LABELS[group.swatchLibrary]}項目…`
+                                : '選擇共用素材庫項目…'}
+                            </option>
+                            {group.swatchLibrary
+                              ? getSwatchesForGroup(group).map((sw) => (
+                                  <option key={sw.id} value={sw.id}>
+                                    {sw.code} · {sw.name}
+                                  </option>
+                                ))
+                              : SWATCH_LIBRARY_ORDER.map((lib) => {
+                                  const items = swatches.filter(
+                                    (s) => (s.libraryType || 'fabric') === lib
+                                  );
+                                  if (items.length === 0) return null;
+                                  return (
+                                    <optgroup key={lib} label={SWATCH_LIBRARY_LABELS[lib]}>
+                                      {items.map((sw) => (
+                                        <option key={sw.id} value={sw.id}>
+                                          {sw.code} · {sw.name}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  );
+                                })}
                           </select>
                         ) : (
                           <select
